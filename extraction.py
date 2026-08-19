@@ -1,3 +1,6 @@
+#this file is the middleman between your FastAPI service and Claude: it receives the image bytes, 
+# sends the image to Claude Vision, gets Claude's JSON back, parses it, 
+# validates it with my ExtractionResult, and returns it.
 import base64
 import json
 import os
@@ -59,7 +62,12 @@ Rules:
 - If a time is ambiguous or hard to read, set confidence to "low"
 - Skip empty cells (days off) — do not create shift entries for them
 - If you can identify the department name from a header, include it
-- If you cannot determine the year, assume the current year"""
+- If you cannot determine the year, assume the current year
+- If a cell contains "UNP", "VAC", "SICK", "OFF", or similar leave codes 
+  instead of a time, skip that cell — do not create a shift entry
+- If a cell shows a total shift time AND a breakdown with roles/positions 
+  underneath, only extract the total shift time. Ignore role-specific 
+  sub-schedules and break splits."""
 
 
 class ExtractionError(Exception):
@@ -77,12 +85,12 @@ def _extract_json(text: str) -> str:
     return match.group(1).strip() if match else text
 
 
-def extract_schedule(image_bytes: bytes, filename: str) -> ExtractionResult:
+def extract_schedule(image_bytes: bytes, filename: str) -> ExtractionResult:  #evalute using extractionresult pydantic model in models.py
     """Send a schedule photo to Claude Vision and return a validated ExtractionResult."""
-    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8") #converting the bytes to text so Base64 encoding converts the image into a text string that can travel safely inside JSON.
     media_type = _media_type_for(filename)
 
-    response = client.messages.create(
+    response = client.messages.create(  #calling claude sending txt image to claude and extracting the information 
         model=MODEL,
         max_tokens=4096,
         system=SYSTEM_PROMPT,
@@ -106,9 +114,11 @@ def extract_schedule(image_bytes: bytes, filename: str) -> ExtractionResult:
             }
         ],
     )
-
+# parsing the json respond we get back from claude 
     raw_text = response.content[0].text
-    json_text = _extract_json(raw_text)
+    json_text = _extract_json(raw_text) #making it json properlly
+
+ #checking if that json againt the pydantic model is right and good to go    
 
     try:
         data = json.loads(json_text)

@@ -1,12 +1,18 @@
+import logging
 import os
+import traceback
 
 import anthropic
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from extraction import ExtractionError, extract_schedule
 from models import ExtractionResult
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("shiftsync-extraction")
 
 load_dotenv()
 
@@ -47,12 +53,21 @@ async def extract_schedule_endpoint(file: UploadFile):
     try:
         return extract_schedule(image_bytes, file.filename)
     except ExtractionError:
+        traceback.print_exc()
         raise HTTPException(
             status_code=422,
             detail="Could not extract schedule data from this image. Please ensure the image shows a readable work schedule.",
         )
     except anthropic.APIError:
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail="Schedule extraction service temporarily unavailable. Please try again.",
         )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception on %s %s", request.method, request.url.path, exc_info=exc)
+    traceback.print_exc()
+    return JSONResponse(status_code=500, content={"detail": "Internal server error."})
