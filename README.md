@@ -1,186 +1,167 @@
-# ShiftSync Extraction Service
+<div align="center">
 
-Python FastAPI microservice that extracts structured shift data from photos of printed employee work schedules using Claude's Vision API.
+<img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=0:0B1220,100:1a2942&height=180&section=header&text=ShiftSync%20Extraction&fontSize=46&fontColor=FFD100&animation=fadeIn&fontAlignY=40&desc=The%20AI%20service%20that%20reads%20a%20schedule%20photo%20and%20turns%20it%20into%20structured%20shift%20data&descAlignY=62&descSize=14&descColor=E6E8EE" alt="ShiftSync Extraction banner"/>
 
-## Architecture
+<br>
 
-This service is one half of a two-service architecture for ShiftSync, a collaborative shift management platform for frontline retail workers. The other half is a Next.js web app (separate repo) that handles the frontend, auth, database, and all user-facing features. That app calls this service when a user uploads a schedule photo.
+[![Powers ShiftSync](https://img.shields.io/badge/Powers-ShiftSync-FFD100?style=for-the-badge&logo=vercel&logoColor=0B1220)](https://shiftsync.win)
+[![Deployed on Railway](https://img.shields.io/badge/Deployed-Railway-0B1220?style=for-the-badge&logo=railway&logoColor=FFD100)](https://railway.app)
+[![License](https://img.shields.io/badge/License-MIT-0B1220?style=for-the-badge)](#license)
 
-```
-┌─────────────────────┐       ┌──────────────────────────────────┐
-│   Next.js (Vercel)  │       │  THIS SERVICE — Python FastAPI   │
-│                     │       │  (Railway)                       │
-│  React Frontend     │       │                                  │
-│  API Routes ────────┼──────→│  POST /extract-schedule          │
-│                     │ HTTP  │    ├── Receives image            │
-│                     │       │    ├── Calls Claude Vision API   │
-│                     │       │    ├── Validates with Pydantic   │
-│                     │       │    └── Returns structured JSON   │
-└────────┬────────────┘       └──────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  Supabase           │
-│  (NOT used by this  │
-│   service directly) │
-└─────────────────────┘
-```
+<br>
 
-**Request walkthrough** — Sarah, a shift manager, uploads a schedule photo:
+<img src="https://readme-typing-svg.demolab.com/?font=Inter&size=22&duration=2800&pause=1200&color=FFD100&center=true&vCenter=true&width=680&lines=A+photo+of+a+schedule+goes+in.;Claude+Vision+reads+every+shift.;Structured+JSON+comes+out." alt="Typing SVG" />
 
-1. Sarah opens ShiftSync in her browser (`localhost:3000`).
-2. She uploads `schedule.jpg`.
-3. The browser sends the image to Next.js (`localhost:3000/api/schedules/upload`).
-4. The Next.js API route forwards the image to this service (`localhost:8000/extract-schedule`).
-5. FastAPI receives it at `extract_schedule_endpoint`.
-6. It checks: is it an accepted image type? Is it under 10MB?
-7. It calls `extract_schedule()` from `extraction.py`.
-8. `extraction.py` base64-encodes the image and sends it to Claude.
-9. Claude looks at the photo and returns JSON.
-10. `extraction.py` parses the response and validates it with Pydantic.
-11. The validated `ExtractionResult` is returned to `main.py`.
-12. FastAPI serializes it to JSON and sends it back to Next.js.
-13. Next.js shows the extracted schedule in a verification table.
-14. Sarah fixes any mistakes and publishes the schedule.
+</div>
 
-## Tech Stack
+<br>
 
-- Python 3.11+
-- FastAPI + Uvicorn — web framework and ASGI server
-- Pydantic — data validation and response models
-- Anthropic Python SDK — Claude Vision API calls
-- python-multipart — file upload handling
-- python-dotenv — environment variable loading
-- Deployed on Railway (free tier)
+## What is this?
 
-## Running Locally
+This is the AI extraction engine behind [**ShiftSync**](https://github.com/AbinKBinoy/shiftsync), a shift-scheduling app that turns a photo of a posted work schedule into a shared team calendar. This service is the piece that does the hard part: taking a raw photo of a whiteboard, a printout, or a screenshot of a scheduling system, and turning it into clean, structured shift data, employee names, dates, and start/end times, without anyone retyping a thing.
 
-```bash
-# Clone the repo
-git clone <this-repo-url>
-cd shiftsync-extraction
+It's a standalone FastAPI service, deployed independently of the main app, and callable by any client over HTTP.
 
-# Install dependencies
-pip install -r requirements.txt
+<br>
 
-# Create .env file with your API key
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+<div align="center">
 
-# Start the server
-uvicorn main:app --reload
+## How it works
 
-# Server runs at http://localhost:8000
-# Interactive API docs at http://localhost:8000/docs
-```
+</div>
 
-## API Endpoints
+<table>
+<tr>
+<td width="33%" align="center">
 
-### GET /health
+**1. Receive**
 
-Health check endpoint for monitoring and deployment verification.
+A client POSTs an image of a posted schedule to <code>/extract-schedule</code>.
 
-**Request:**
-```bash
-curl http://localhost:8000/health
-```
+</td>
+<td width="33%" align="center">
 
-**Response (200):**
-```json
-{
-  "status": "ok",
-  "service": "shiftsync-extraction"
-}
-```
+**2. Read**
 
-### POST /extract-schedule
+Claude's Vision API reads the image, identifying every employee, date, and shift time on the page.
 
-Receives a schedule photo and extracts shift data using Claude's Vision API.
+</td>
+<td width="33%" align="center">
 
-**Request:**
-- Content-Type: `multipart/form-data`
-- Body: `file` field containing the image
-- Max file size: 10MB
-- Accepted formats: `image/jpeg`, `image/png`, `image/webp`
+**3. Return**
+
+The service returns clean, structured JSON, ready to be published straight to a calendar.
+
+</td>
+</tr>
+</table>
+
+<br>
+
+## API
+
+### `POST /extract-schedule`
+
+Accepts an image file (schedule photo) as `multipart/form-data`.
+
+**Request**
 
 ```bash
-curl -X POST http://localhost:8000/extract-schedule \
+curl -X POST https://shiftsync-extraction-production.up.railway.app/extract-schedule \
   -F "file=@schedule.jpg"
 ```
 
-**Response (200):**
+**Response**
+
 ```json
 {
-  "department_name": "Computing",
-  "schedule_period": {
-    "start_date": "2026-01-20",
-    "end_date": "2026-01-26"
-  },
   "shifts": [
     {
-      "employee_name": "Abin",
-      "date": "2026-01-20",
-      "start_time": "14:00",
-      "end_time": "22:00",
-      "confidence": "high"
+      "employee_name": "Jansen C.",
+      "date": "2026-09-16",
+      "start_time": "09:45",
+      "end_time": "18:00"
     },
     {
-      "employee_name": "Sarah",
-      "date": "2026-01-20",
-      "start_time": "09:00",
-      "end_time": "14:00",
-      "confidence": "high"
+      "employee_name": "Antonio L.",
+      "date": "2026-09-16",
+      "start_time": "10:00",
+      "end_time": "18:00"
     }
   ],
   "warnings": []
 }
 ```
 
-**Error Response (400) — Bad input:**
-```json
-{
-  "detail": "Invalid file type. Accepted formats: JPEG, PNG, WebP"
-}
+Any ambiguity the model runs into (a smudged time, an unclear name) is surfaced in `warnings`, rather than silently guessed.
+
+<br>
+
+<div align="center">
+
+## Built with
+
+<img src="https://skillicons.dev/icons?i=python,fastapi,railway&theme=dark" />
+
+</div>
+
+<br>
+
+## Why a separate service?
+
+Reading an image with a vision model is slow and resource-heavy compared to the rest of a typical web request. Keeping this isolated from [ShiftSync's](https://github.com/AbinKBinoy/shiftsync) main Next.js app means the extraction workload never blocks or slows down the interactive parts of the product, the calendar, the swap flow, none of it waits on this. It also means this service could power a completely different frontend in the future without any changes here.
+
+<br>
+
+## Getting started locally
+
+### Prerequisites
+- Python 3.11+
+- An Anthropic API key
+
+### Setup
+
+```bash
+git clone https://github.com/AbinKBinoy/shiftsync-extraction.git
+cd shiftsync-extraction
+python -m venv .venv
+source .venv/bin/activate   # .venv\Scripts\activate on Windows
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-**Error Response (422) — Extraction failed:**
-```json
-{
-  "detail": "Could not extract schedule data from this image. Please ensure the image shows a readable work schedule."
-}
+Fill in `.env`:
+
+```
+ANTHROPIC_API_KEY=
 ```
 
-**Error Response (500) — API failure:**
-```json
-{
-  "detail": "Schedule extraction service temporarily unavailable. Please try again."
-}
+Run it:
+
+```bash
+uvicorn main:app --reload
 ```
 
-## Environment Variables
+The service will be live at `http://localhost:8000`, with interactive API docs at `http://localhost:8000/docs`.
 
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Claude API key used for Vision API calls |
-| `ALLOWED_ORIGINS` | Yes | Comma-separated list of origins allowed by CORS (e.g. `http://localhost:3000`) |
+<br>
 
-- `.env` is for local development and is never committed to git.
-- `.env.example` is committed and shows what variables are needed without real values.
-- In production (Railway), these are set in the Railway dashboard under Variables.
+## Tested against
 
-## Deployment
+Real, posted retail schedules, printed reports, whiteboard photos, and phone screenshots, not synthetic test data. See [ShiftSync](https://github.com/AbinKBinoy/shiftsync) for the full product this powers.
 
-Deployed on [Railway](https://railway.app):
+<br>
 
-1. Push code to GitHub.
-2. Create a new project on Railway and connect the GitHub repo.
-3. Railway auto-detects Python and deploys.
-4. Add environment variables in the Railway dashboard:
-   - `ANTHROPIC_API_KEY` = your key
-   - `ALLOWED_ORIGINS` = `https://your-nextjs-app.vercel.app`
-5. Note the public URL Railway gives you (e.g. `https://shiftsync-extraction-production.up.railway.app`).
-6. This URL goes into the Next.js app's `EXTRACTION_SERVICE_URL` environment variable.
+<div align="center">
 
-## Related Repos
+## Author
 
-- [shiftsync](https://github.com/your-org/shiftsync) — Next.js frontend, auth, and database (the other half of the ShiftSync system)
+**Abin Kuzhuvelikalam Binoy**
+
+[![GitHub](https://img.shields.io/badge/GitHub-AbinKBinoy-0B1220?style=for-the-badge&logo=github)](https://github.com/AbinKBinoy)
+
+<br>
+
+<img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=0:1a2942,100:0B1220&height=100&section=footer" alt="footer"/>
+
+</div>
